@@ -1,0 +1,362 @@
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <stdint.h>
+
+#define LED_PIN PB0
+
+#define LM35_CHANNEL 0
+
+#define LCD_RS PB4
+#define LCD_EN PB3
+
+#define LCD_D4 PD5
+#define LCD_D5 PD4
+#define LCD_D6 PD3
+#define LCD_D7 PD2
+
+
+void my_delay_ms(uint16_t ms)
+{
+    volatile uint16_t i;
+
+    while(ms--)
+    {
+        for(i = 0; i < 1600; i++)
+        {
+            __asm__ __volatile__("nop");
+        }
+    }
+}
+
+void UART_Init(void)
+{
+   
+    uint16_t ubrr = 103;			 // Baud Rate = 96
+// UBRR = 103 for 16 MHz clock
+
+    UBRR0H = (uint8_t)(ubrr >> 8);
+    UBRR0L = (uint8_t)ubrr;
+
+    UCSR0B = (1 << TXEN0);
+
+    
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+}
+
+
+void UART_Transmit(char data)
+{
+
+    while(!(UCSR0A & (1 << UDRE0)));
+
+    UDR0 = data;
+}
+
+
+void UART_SendString(const char *str)
+{
+    while(*str)
+    {
+        UART_Transmit(*str++);
+    }
+}
+
+void UART_SendNumber(uint16_t number)
+{
+    char buffer[6];
+
+    uint8_t i = 0;
+
+    if(number == 0)
+    {
+        UART_Transmit('0');
+        return;
+    }
+
+    while(number > 0)
+    {
+        buffer[i++] = (number % 10) + '0';
+
+        number = number / 10;
+    }
+
+    while(i > 0)
+    {
+        UART_Transmit(buffer[--i]);
+    }
+}
+
+void ADC_Init(void)
+{
+       ADMUX = (1 << REFS0);
+
+    ADCSRA = (1 << ADEN) |
+             (1 << ADPS2) |
+             (1 << ADPS1) |
+             (1 << ADPS0);
+}
+
+uint16_t ADC_Read(uint8_t channel)
+{
+    
+    ADMUX = (ADMUX & 0xF0) | (channel & 0x0F);
+
+    ADCSRA |= (1 << ADSC);
+
+    while(ADCSRA & (1 << ADSC));
+
+    return ADC;
+}
+
+void LCD_PulseEnable(void)
+{
+    PORTB |= (1 << LCD_EN);
+
+    my_delay_ms(1);
+
+    PORTB &= ~(1 << LCD_EN);
+
+    my_delay_ms(1);
+}
+
+
+void LCD_SendNibble(uint8_t data)
+{
+   
+    PORTD &= ~((1 << LCD_D4) |
+               (1 << LCD_D5) |
+               (1 << LCD_D6) |
+               (1 << LCD_D7));
+
+
+    if(data & 0x01)
+        PORTD |= (1 << LCD_D4);
+
+
+    if(data & 0x02)
+        PORTD |= (1 << LCD_D5);
+
+
+    if(data & 0x04)
+        PORTD |= (1 << LCD_D6);
+
+
+    if(data & 0x08)
+        PORTD |= (1 << LCD_D7);
+
+
+    LCD_PulseEnable();
+}
+
+
+void LCD_Command(uint8_t command)
+{
+
+    PORTB &= ~(1 << LCD_RS);
+
+
+    LCD_SendNibble(command >> 4);
+
+
+    LCD_SendNibble(command & 0x0F);
+
+
+    my_delay_ms(2);
+}
+
+
+void LCD_Data(uint8_t data)
+{
+    
+    PORTB |= (1 << LCD_RS);
+
+    LCD_SendNibble(data >> 4);
+
+    LCD_SendNibble(data & 0x0F);
+
+
+    my_delay_ms(2);
+}
+
+
+void LCD_Init(void)
+{
+   
+    DDRB |= (1 << LCD_RS) |
+            (1 << LCD_EN);
+
+    DDRD |= (1 << LCD_D4) |
+            (1 << LCD_D5) |
+            (1 << LCD_D6) |
+            (1 << LCD_D7);
+    my_delay_ms(50);
+
+
+    PORTB &= ~(1 << LCD_RS);
+
+
+    LCD_SendNibble(0x03);
+
+    my_delay_ms(5);
+
+
+    LCD_SendNibble(0x03);
+
+    my_delay_ms(1);
+
+
+    LCD_SendNibble(0x03);
+
+    my_delay_ms(1);
+
+
+    LCD_SendNibble(0x02);
+
+    my_delay_ms(1);
+
+
+    LCD_Command(0x28);
+
+    LCD_Command(0x0C);
+
+    LCD_Command(0x06);
+
+    LCD_Command(0x01);
+
+    my_delay_ms(2);
+}
+
+
+void LCD_SendString(const char *str)
+{
+    while(*str)
+    {
+        LCD_Data(*str++);
+    }
+}
+
+
+void LCD_SetCursor(uint8_t row, uint8_t column)
+{
+    uint8_t address;
+
+    if(row == 0)
+    {
+        address = 0x80 + column;
+    }
+    else
+    {
+        address = 0xC0 + column;
+    }
+
+    LCD_Command(address);
+}
+
+
+void LCD_SendNumber(uint16_t number)
+{
+    char buffer[6];
+
+    uint8_t i = 0;
+
+
+    if(number == 0)
+    {
+        LCD_Data('0');
+
+        return;
+    }
+
+
+    while(number > 0)
+    {
+        buffer[i++] = (number % 10) + '0';
+
+        number = number / 10;
+    }
+
+
+    while(i > 0)
+    {
+        LCD_Data(buffer[--i]);
+    }
+}
+
+
+int main(void)
+{
+    uint16_t adc_value;
+
+    uint16_t temperature;
+
+    DDRB |= (1 << LED_PIN);
+
+    ADC_Init();
+
+    UART_Init();
+
+    LCD_Init();
+
+    LCD_SetCursor(0, 0);
+
+    LCD_SendString("LM35 Temperature");
+
+
+    LCD_SetCursor(1, 0);
+
+    LCD_SendString("System Ready");
+
+
+    my_delay_ms(1000);
+
+
+    LCD_Command(0x01);
+
+
+    while(1)
+    {
+           adc_value = ADC_Read(LM35_CHANNEL);
+
+           ADC Voltage:
+
+           V = ADC * 5 / 1023
+
+           LM35:
+
+           10mV = 1 degree C
+
+           Temperature:
+
+           T = V * 100
+
+           Simplified:
+
+           T = ADC * 500 / 1023
+
+        LCD_SetCursor(0, 0);
+
+        LCD_SendString("Temp: ");
+
+        LCD_SendNumber(temperature);
+
+        LCD_Data(0xDF);
+
+        LCD_SendString("C   ");
+
+        UART_SendString("Temperature: ");
+
+        UART_SendNumber(temperature);
+
+        UART_SendString(" C\r\n");
+
+        PORTB |= (1 << LED_PIN);
+
+        my_delay_ms(500);
+
+        PORTB &= ~(1 << LED_PIN);
+
+        my_delay_ms(500);
+    }
+}
+
