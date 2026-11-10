@@ -1,0 +1,1711 @@
+1)  Toggle an LED connected to PORTD Pin 5
+#include <avr/io.h>
+#include <util/delay.h>
+
+int main(void)
+{
+    DDRD |= (1 << PD5);
+
+    while (1)
+    {
+        PORTD |= (1 << PD5);  // Turn LED ON
+        _delay_ms(3000);  // ON for 3 seconds
+
+        PORTD &= ~(1 << PD5);// Turn LED OFF
+        _delay_ms(5000);  // OFF for 5 seconds
+    }
+    return 0;
+}
+
+2) Toggle between a Red LED and a Green LED
+#include <avr/io.h>
+#include <util/delay.h>
+
+int main(void)
+{
+    // PD2 and PD3 as output
+    DDRD |= (1 << PD2) | (1 << PD3);
+
+    // PD4 as input
+    DDRD &= ~(1 << PD4);
+
+    // Enable internal pull-up resistor
+    PORTD |= (1 << PD4);
+
+    // Initially Red LED ON
+    PORTD |= (1 << PD2);
+    PORTD &= ~(1 << PD3);
+
+    while (1)
+    {
+        // Check if button is pressed
+        if (!(PIND & (1 << PD4)))
+        {
+            _delay_ms(50);
+
+            if (!(PIND & (1 << PD4)))
+            {
+                // Check current LED state
+                if (PORTD & (1 << PD2))
+                {
+                    // Red OFF, Green ON
+                    PORTD &= ~(1 << PD2);
+                    PORTD |= (1 << PD3);
+                }
+                else
+                {
+                    // Green OFF, Red ON
+                    PORTD &= ~(1 << PD3);
+                    PORTD |= (1 << PD2);
+                }
+                // Wait until button is released
+                while (!(PIND & (1 << PD4)));
+
+                _delay_ms(50);
+            }
+        }
+    }
+    return 0;
+}
+
+3) Create a "train" animation where a single active LED appears to move across a series of connected GPIO pins
+#include <avr/io.h>
+#include <util/delay.h>
+
+int main(void)
+{
+    // Configure PORTB (8 pins) as output
+    DDRB = 0xFF;
+    while (1)
+    {
+        // Move LED from first to last position
+        for (int i = 0; i < 8; i++)
+        {
+            PORTB = (1 << i);  // Turn ON one LED
+            _delay_ms(300);    // Delay of 300 ms
+        }
+        // Reset and repeat automatically
+        PORTB = 0x00;
+    }
+    return 0;
+}
+
+4) Four LEDs to display a 4-bit binary count triggered by a switch
+#include <avr/io.h>
+#include <util/delay.h>
+
+void update_leds(unsigned char count)
+{
+    PORTB = (PORTB & 0xF0) | (count & 0x0F);
+}
+
+int main(void)
+{
+    unsigned char count = 0;
+
+    // Configure PB0-PB3 as outputs
+    DDRB |= 0x0F;
+
+    // Configure PD2 as input
+    DDRD &= ~(1 << PD2);
+
+    // Enable internal pull-up resistor
+    PORTD |= (1 << PD2);
+
+    // Initially all LEDs OFF
+    update_leds(count);
+
+    while (1)
+    {
+        // Check if button is pressed
+        if (!(PIND & (1 << PD2)))
+        {
+            _delay_ms(50);
+
+            if (!(PIND & (1 << PD2)))
+            {
+                // Increment counter
+                count++;
+
+                // Reset after 15
+                if (count > 15)
+                {
+                    count = 0;
+                }
+
+                // Update LEDs
+                update_leds(count);
+
+                // Wait until button is released
+                while (!(PIND & (1 << PD2)));
+
+                _delay_ms(50);
+            }
+        }
+    }
+
+    return 0;
+}
+
+5) Simulate a basic one-way traffic light controller
+#include <avr/io.h>
+
+#define GREEN  PB0
+#define ORANGE PB1
+#define RED    PB2
+
+void my_delay_ms(unsigned int ms)
+{
+    unsigned int i, j;
+    for (i = 0; i < ms; i++)
+    {
+        for (j = 0; j < 1000; j++)
+        {
+            asm volatile ("nop");
+        }
+    }
+}
+int main(void)
+{
+    // Configure PB0, PB1 and PB2 as outputs
+    DDRB |= (1 << GREEN) | (1 << ORANGE) | (1 << RED);
+
+    while (1)
+    {
+        // GREEN ON for 10 seconds
+        PORTB = (1 << GREEN);
+        my_delay_ms(10000);
+
+        // ORANGE ON for 3 seconds
+        PORTB = (1 << ORANGE);
+        my_delay_ms(3000);
+
+        // RED ON for 10 seconds
+        PORTB = (1 << RED);
+        my_delay_ms(10000);
+    }
+
+    return 0;
+}
+
+6) traffic light sequence that includes a highpriority interrupt designed to trigger a state change only after the current light cycle completes its minimum safe duration
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+#define GREEN  PB0
+#define ORANGE PB1
+#define RED    PB2
+
+volatile unsigned char emergency_flag = 0;
+
+// External Interrupt 0 ISR
+ISR(INT0_vect)
+{
+    emergency_flag = 1;
+}
+
+// Custom delay function
+void my_delay_ms(unsigned int ms)
+{
+    unsigned int i, j;
+
+    for (i = 0; i < ms; i++)
+    {
+        for (j = 0; j < 1000; j++)
+        {
+            asm volatile ("nop");
+        }
+    }
+}
+// Function to control traffic lights
+void traffic_light(unsigned char led, unsigned int time)
+{
+    PORTB = (1 << led);
+
+    // Wait for the current light duration
+    my_delay_ms(time);
+
+    // Check emergency flag after duration
+    if (emergency_flag == 1)
+    {
+        // Give priority to Green light
+        PORTB = (1 << GREEN);
+
+        my_delay_ms(10000);
+
+        // Clear emergency flag
+        emergency_flag = 0;
+    }
+}
+
+int main(void)
+{
+    // Configure PB0, PB1 and PB2 as outputs
+    DDRB |= (1 << GREEN) | (1 << ORANGE) | (1 << RED);
+
+    // Configure PD2 (INT0) as input
+    DDRD &= ~(1 << PD2);
+
+    // Enable internal pull-up resistor
+    PORTD |= (1 << PD2);
+
+    // Configure INT0 for falling edge
+    EICRA |= (1 << ISC01);
+    EICRA &= ~(1 << ISC00);
+
+    // Enable external interrupt INT0
+    EIMSK |= (1 << INT0);
+
+    // Enable global interrupts
+    sei();
+
+    while (1)
+    {
+        // Normal traffic light sequence
+        traffic_light(GREEN, 10000);
+        traffic_light(ORANGE, 3000);
+        traffic_light(RED, 10000);
+    }
+
+    return 0;
+}
+
+7) Two independent timing tasks simultaneously using the 16-bit Timer1 and the 8-bit Timer2
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <stdint.h>
+
+// Counter for Timer2
+volatile uint16_t timer2_count = 0;
+
+// Timer1 ISR - Every 2 seconds
+ISR(TIMER1_COMPA_vect)
+{
+    PORTB ^= (1 << PB1);  // Toggle Status LED
+}
+
+// Timer2 ISR - Every 2 milliseconds
+ISR(TIMER2_COMPA_vect)
+{
+    timer2_count++;
+
+    // 250 x 2 ms = 500 ms
+    if (timer2_count >= 250)
+    {
+        PORTB ^= (1 << PB2);  // Toggle Heartbeat LED
+        timer2_count = 0;
+    }
+}
+
+int main(void)
+{
+    // Configure PB1 and PB2 as outputs
+    DDRB |= (1 << PB1) | (1 << PB2);
+
+    // Initially turn OFF both LEDs
+    PORTB &= ~((1 << PB1) | (1 << PB2));
+
+    // -------------------------
+    // TIMER1 CONFIGURATION
+    // -------------------------
+
+    // CTC mode
+    TCCR1A = 0;
+    TCCR1B = (1 << WGM12);
+
+    // Prescaler = 1024
+    TCCR1B |= (1 << CS12) | (1 << CS10);
+
+    // 2 seconds:
+    // (16000000 / 1024) x 2 = 31250
+    OCR1A = 31249;
+
+    // Reset Timer1 counter
+    TCNT1 = 0;
+
+    // Enable Timer1 Compare Match A
+    TIMSK1 |= (1 << OCIE1A);
+
+    // -------------------------
+    // TIMER2 CONFIGURATION
+    // -------------------------
+
+    // CTC mode
+    TCCR2A = (1 << WGM21);
+
+    // Prescaler = 128
+    TCCR2B = (1 << CS22) | (1 << CS20);
+
+    // 2 milliseconds:
+    // (16000000 / 128) x 0.002 = 250
+    OCR2A = 249;
+
+    // Reset Timer2 counter
+    TCNT2 = 0;
+
+    // Enable Timer2 Compare Match A
+    TIMSK2 |= (1 << OCIE2A);
+
+    // Enable global interrupts
+    sei();
+
+    while (1)
+    {
+        // Timers run independently
+    }
+
+    return 0;
+}
+
+8) Control the brightness of an LED or the speed of a small DC motor
+
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <util/delay.h>
+
+// Push button connected to PD2
+#define BUTTON PD2
+
+unsigned char level = 0;
+
+// Dedicated function to update PWM duty cycle
+void update_pwm(void)
+{
+    switch (level)
+    {
+        case 0:
+            OCR0A = 64;    // 25% duty cycle
+            break;
+
+        case 1:
+            OCR0A = 128;   // 50% duty cycle
+            break;
+
+        case 2:
+            OCR0A = 191;   // 75% duty cycle
+            break;
+
+        case 3:
+            OCR0A = 255;   // 100% duty cycle
+            break;
+    }
+}
+
+int main(void)
+{
+    // Configure PD6 (OC0A) as output
+    DDRD |= (1 << PD6);
+
+    // Configure PD2 as input
+    DDRD &= ~(1 << BUTTON);
+
+    // Enable internal pull-up resistor
+    PORTD |= (1 << BUTTON);
+
+    // Timer0 Fast PWM mode
+    TCCR0A = (1 << WGM00) | (1 << WGM01);
+
+    // Non-inverting PWM on OC0A
+    TCCR0A |= (1 << COM0A1);
+
+    // Prescaler = 64
+    TCCR0B = (1 << CS01) | (1 << CS00);
+
+    // Initial duty cycle = 25%
+    update_pwm();
+
+    while (1)
+    {
+        // Check button press
+        if (!(PIND & (1 << BUTTON)))
+        {
+            _delay_ms(50);  // Debouncing
+
+            if (!(PIND & (1 << BUTTON)))
+            {
+                // Move to next duty cycle
+                level++;
+
+                if (level > 3)
+                {
+                    level = 0;
+                }
+
+                // Update PWM register
+                update_pwm();
+
+                // Wait until button is released
+                while (!(PIND & (1 << BUTTON)));
+
+                _delay_ms(50);
+            }
+        }
+    }
+
+    return 0;
+}
+
+9) Control the brightness of an LED or the speed of a small DC motor..
+
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <util/delay.h>
+
+// Push button connected to PD2
+#define BUTTON PD2
+
+unsigned char level = 0;
+
+// Function to update PWM duty cycle
+void update_pwm(void)
+{
+    switch (level)
+    {
+        case 0:
+            OCR0A = 64;     // 25% duty cycle
+            break;
+
+        case 1:
+            OCR0A = 128;    // 50% duty cycle
+            break;
+
+        case 2:
+            OCR0A = 191;    // 75% duty cycle
+            break;
+
+        case 3:
+            OCR0A = 255;    // 100% duty cycle
+            break;
+    }
+}
+
+int main(void)
+{
+    // Configure PD6 (OC0A) as output
+    DDRD |= (1 << PD6);
+
+    // Configure PD2 as input
+    DDRD &= ~(1 << BUTTON);
+
+    // Enable internal pull-up resistor
+    PORTD |= (1 << BUTTON);
+
+    // Configure Timer0 in Fast PWM mode
+    TCCR0A = (1 << WGM00) | (1 << WGM01);
+
+    // Non-inverting PWM on OC0A
+    TCCR0A |= (1 << COM0A1);
+
+    // Set prescaler to 64
+    TCCR0B = (1 << CS01) | (1 << CS00);
+
+    // Initial duty cycle = 25%
+    update_pwm();
+
+    while (1)
+    {
+        // Check whether button is pressed
+        if (!(PIND & (1 << BUTTON)))
+        {
+            _delay_ms(50);  // Debouncing delay
+
+            // Confirm button is still pressed
+            if (!(PIND & (1 << BUTTON)))
+            {
+                // Move to next duty cycle
+                level++;
+
+                if (level > 3)
+                {
+                    level = 0;
+                }
+
+                // Update PWM output
+                update_pwm();
+
+                // Wait until button is released
+                while (!(PIND & (1 << BUTTON)));
+
+                _delay_ms(50);
+            }
+        }
+    }
+    return 0;
+}
+
+10) Automated cooling system using an LM35 sensor and a DC motor
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <util/delay.h>
+
+// Pin definitions
+#define MOTOR_PWM PD6
+#define BUTTON    PD2
+
+// Function declarations
+void adc_init(void);
+unsigned int read_temperature(void);
+unsigned char calculate_speed(unsigned int temp);
+void motor_control(unsigned char speed);
+void pwm_init(void);
+
+int main(void)
+{
+    unsigned int temperature;
+    unsigned char speed;
+    unsigned char system_on = 0;
+
+    // Initialize ADC and PWM
+    adc_init();
+    pwm_init();
+
+    // Configure button as input
+    DDRD &= ~(1 << BUTTON);
+
+    // Enable internal pull-up
+    PORTD |= (1 << BUTTON);
+
+    // Initially motor OFF
+    motor_control(0);
+
+    while (1)
+    {
+        // Check push-button
+        if (!(PIND & (1 << BUTTON)))
+        {
+            _delay_ms(50);
+
+            if (!(PIND & (1 << BUTTON)))
+            {
+                // Toggle system ON/OFF
+                system_on = !system_on;
+
+                // Wait until button is released
+                while (!(PIND & (1 << BUTTON)));
+
+                _delay_ms(50);
+            }
+        }
+
+        if (system_on)
+        {
+            // Read temperature from LM35
+            temperature = read_temperature();
+
+            // Calculate motor speed
+            speed = calculate_speed(temperature);
+
+            // Control motor
+            motor_control(speed);
+        }
+        else
+        {
+            // System OFF
+            motor_control(0);
+        }
+
+        _delay_ms(200);
+    }
+
+    return 0;
+}
+
+// Initialize ADC
+void adc_init(void)
+{
+    // AVCC reference, ADC0 input
+    ADMUX = (1 << REFS0);
+
+    // Enable ADC, prescaler = 128
+    ADCSRA = (1 << ADEN) |
+             (1 << ADPS2) |
+             (1 << ADPS1) |
+             (1 << ADPS0);
+}
+
+// Read temperature from LM35
+unsigned int read_temperature(void)
+{
+    unsigned int adc_value;
+    unsigned int temperature;
+
+    // Start ADC conversion
+    ADCSRA |= (1 << ADSC);
+
+    // Wait for conversion
+    while (ADCSRA & (1 << ADSC));
+
+    adc_value = ADC;
+
+    // Convert ADC value to Celsius
+    temperature = (adc_value * 500UL) / 1024;
+
+    return temperature;
+}
+
+// Calculate motor speed based on temperature
+unsigned char calculate_speed(unsigned int temp)
+{
+    if (temp < 25)
+    {
+        return 77;    // Approximately 30% speed
+    }
+    else if (temp < 35)
+    {
+        return 153;   // Approximately 60% speed
+    }
+    else
+    {
+        return 255;   // 100% speed
+    }
+}
+
+// Initialize Timer0 PWM
+void pwm_init(void)
+{
+    // Configure PD6 (OC0A) as output
+    DDRD |= (1 << MOTOR_PWM);
+
+    // Fast PWM, non-inverting mode
+    TCCR0A = (1 << WGM00) |
+             (1 << WGM01) |
+             (1 << COM0A1);
+
+    // Prescaler = 64
+    TCCR0B = (1 << CS01) | (1 << CS00);
+
+    OCR0A = 0;
+}
+
+// Control motor speed
+void motor_control(unsigned char speed)
+{
+    OCR0A = speed;
+}
+
+11) Control the angular position of a servo motor based on the analog input received from a potentiometer
+
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <stdint.h>
+
+// Function declarations
+void adc_init(void);
+uint16_t read_potentiometer(void);
+void timer1_init(void);
+void set_servo_position(uint16_t adc_value);
+
+int main(void)
+{
+    uint16_t adc_value;
+
+    // Initialize ADC
+    adc_init();
+
+    // Initialize Timer1 for servo PWM
+    timer1_init();
+
+    while (1)
+    {
+        // Read potentiometer value
+        adc_value = read_potentiometer();
+
+        // Update servo position
+        set_servo_position(adc_value);
+    }
+
+    return 0;
+}
+
+// Initialize ADC
+void adc_init(void)
+{
+    // AVCC reference, ADC0 input
+    ADMUX = (1 << REFS0);
+
+    // Enable ADC, prescaler = 128
+    ADCSRA = (1 << ADEN) |
+             (1 << ADPS2) |
+             (1 << ADPS1) |
+             (1 << ADPS0);
+}
+
+// Read 10-bit analog value
+uint16_t read_potentiometer(void)
+{
+    // Start ADC conversion
+    ADCSRA |= (1 << ADSC);
+
+    // Wait for conversion to complete
+    while (ADCSRA & (1 << ADSC));
+
+    return ADC;
+}
+
+// Initialize Timer1
+void timer1_init(void)
+{
+    // Configure PB1 (OC1A) as output
+    DDRB |= (1 << PB1);
+
+    // Phase Correct PWM, TOP = ICR1
+    // Mode 10: WGM13 = 1, WGM11 = 1
+    TCCR1A = (1 << WGM11) | (1 << COM1A1);
+
+    TCCR1B = (1 << WGM13) | (1 << CS11);
+
+    // Set TOP value for 50 Hz
+    ICR1 = 20000;
+
+    // Initial servo pulse width = 1 ms
+    OCR1A = 1000;
+}
+
+// Set servo position based on ADC value
+void set_servo_position(uint16_t adc_value)
+{
+    // Map ADC value (0-1023)
+    // to servo pulse width (1-2 ms)
+    OCR1A = 1000 + ((uint32_t)adc_value * 1000) / 1023;
+}
+
+12) Show a 9-digit number on an LCD screen that increases with a quick button press and resets to zero with a long press
+
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+#include <stdio.h>
+#include <stdint.h>
+
+/* LCD connections */
+#define LCD_RS PB0
+#define LCD_EN PB2
+
+/* Button connection */
+#define BUTTON PD2
+
+volatile uint32_t milliseconds = 0;
+
+uint32_t counter = 0;
+
+/* Timer0 interrupt: 1 ms */
+void timer0_init(void)
+{
+    TCCR0A = (1 << WGM01);              // CTC mode
+    TCCR0B = (1 << CS01) | (1 << CS00); // Prescaler 64
+
+    OCR0A = 249;                        // 1 ms at 16 MHz
+    TIMSK0 = (1 << OCIE0A);             // Enable compare interrupt
+
+    sei();
+}
+
+ISR(TIMER0_COMPA_vect)
+{
+    milliseconds++;
+}
+
+/* LCD enable pulse */
+void lcd_enable(void)
+{
+    PORTB |= (1 << LCD_EN);
+    _delay_us(1);
+    PORTB &= ~(1 << LCD_EN);
+    _delay_us(100);
+}
+
+/* Send 4 bits to LCD */
+void lcd_nibble(uint8_t data)
+{
+    PORTD = (PORTD & 0x0F) | (data & 0xF0);
+    lcd_enable();
+}
+
+/* Send command to LCD */
+void lcd_command(uint8_t cmd)
+{
+    PORTB &= ~(1 << LCD_RS);
+
+    lcd_nibble(cmd);
+    lcd_nibble(cmd << 4);
+
+    _delay_ms(2);
+}
+
+/* Send character to LCD */
+void lcd_data(uint8_t data)
+{
+    PORTB |= (1 << LCD_RS);
+
+    lcd_nibble(data);
+    lcd_nibble(data << 4);
+
+    _delay_ms(2);
+}
+
+/* Initialize LCD */
+void lcd_init(void)
+{
+    DDRB |= (1 << LCD_RS) | (1 << LCD_EN);
+    DDRD |= 0xF0;
+
+    _delay_ms(20);
+
+    PORTB &= ~(1 << LCD_RS);
+
+    lcd_nibble(0x30);
+    _delay_ms(5);
+
+    lcd_nibble(0x30);
+    _delay_us(150);
+
+    lcd_nibble(0x30);
+    lcd_nibble(0x20);
+
+    lcd_command(0x28); // 4-bit, 2-line LCD
+    lcd_command(0x0C); // Display ON, cursor OFF
+    lcd_command(0x06); // Auto increment
+    lcd_command(0x01); // Clear display
+}
+
+/* Display the 9-digit counter */
+void update_lcd(uint32_t value)
+{
+    char buffer[10];
+
+    snprintf(buffer, sizeof(buffer), "%09lu",
+             (unsigned long)value);
+
+    lcd_command(0x80);
+    lcd_data('C');
+    lcd_data('o');
+    lcd_data('u');
+    lcd_data('n');
+    lcd_data('t');
+    lcd_data('e');
+    lcd_data('r');
+    lcd_data(':');
+
+    lcd_command(0xC0);
+
+    for (uint8_t i = 0; i < 9; i++)
+    {
+        lcd_data(buffer[i]);
+    }
+}
+
+/* Check how long the button is held */
+uint8_t check_button_press(void)
+{
+    uint32_t press_start;
+    uint32_t press_duration;
+
+    if (!(PIND & (1 << BUTTON)))
+    {
+        _delay_ms(30); // Debounce
+
+        if (!(PIND & (1 << BUTTON)))
+        {
+            press_start = milliseconds;
+
+            while (!(PIND & (1 << BUTTON)))
+            {
+                // Wait until button is released
+            }
+
+            press_duration = milliseconds - press_start;
+
+            _delay_ms(30); // Release debounce
+
+            if (press_duration >= 2000)
+            {
+                return 2; // Long press
+            }
+            else
+            {
+                return 1; // Short press
+            }
+        }
+    }
+
+    return 0;
+}
+
+int main(void)
+{
+    uint8_t button_status;
+
+    /* Configure button as input with pull-up */
+    DDRD &= ~(1 << BUTTON);
+    PORTD |= (1 << BUTTON);
+
+    lcd_init();
+    timer0_init();
+
+    counter = 0;
+    update_lcd(counter);
+
+    while (1)
+    {
+        button_status = check_button_press();
+
+        if (button_status == 1)
+        {
+            if (counter < 999999999UL)
+            {
+                counter++;
+            }
+
+            update_lcd(counter);
+        }
+        else if (button_status == 2)
+        {
+            counter = 0;
+            update_lcd(counter);
+        }
+    }
+}
+
+13) Manage an LED’s state and intensity through a serial terminal while providing real-time status updates back to the user
+
+#define F_CPU 16000000UL
+#define BAUD 9600
+#define UBRR_VALUE ((F_CPU / (16UL * BAUD)) - 1)
+
+#include <avr/io.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Function declarations */
+void uart_init(void);
+void uart_transmit(char data);
+void uart_print(char *str);
+char uart_receive(void);
+
+void pwm_init(void);
+void set_brightness(uint8_t value);
+
+void process_command(char *command);
+
+/* Initialize UART */
+void uart_init(void)
+{
+    UBRR0H = (uint8_t)(UBRR_VALUE >> 8);
+    UBRR0L = (uint8_t)UBRR_VALUE;
+
+    UCSR0B = (1 << RXEN0) | (1 << TXEN0);
+
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+}
+
+/* Transmit one character */
+void uart_transmit(char data)
+{
+    while (!(UCSR0A & (1 << UDRE0)));
+
+    UDR0 = data;
+}
+
+/* Transmit a string */
+void uart_print(char *str)
+{
+    while (*str)
+    {
+        uart_transmit(*str++);
+    }
+}
+
+/* Receive one character */
+char uart_receive(void)
+{
+    while (!(UCSR0A & (1 << RXC0)));
+
+    return UDR0;
+}
+
+/* Initialize Timer0 Fast PWM */
+void pwm_init(void)
+{
+    DDRD |= (1 << PD6);  // OC0A output
+
+    TCCR0A = (1 << COM0A1) |
+             (1 << WGM01) |
+             (1 << WGM00);
+
+    TCCR0B = (1 << CS01) | (1 << CS00);
+    // Fast PWM, prescaler 64
+
+    OCR0A = 0;  // LED initially OFF
+}
+
+/* Set LED brightness from 0 to 100 */
+void set_brightness(uint8_t value)
+{
+    OCR0A = ((uint16_t)value * 255) / 100;
+}
+
+/* Process received commands */
+void process_command(char *command)
+{
+    uint8_t value;
+    char *endptr;
+
+    if (strcmp(command, "ON") == 0)
+    {
+        set_brightness(100);
+        uart_print("LED is now ON\r\n");
+    }
+
+    else if (strcmp(command, "OFF") == 0)
+    {
+        set_brightness(0);
+        uart_print("LED is now OFF\r\n");
+    }
+
+    else
+    {
+        value = (uint8_t)strtol(command, &endptr, 10);
+
+        if (*command != '\0' &&
+            *endptr == '\0' &&
+            value <= 100)
+        {
+            set_brightness(value);
+
+            uart_print("Brightness set to ");
+            
+            char buffer[5];
+            itoa(value, buffer, 10);
+
+            uart_print(buffer);
+            uart_print("%\r\n");
+        }
+        else
+        {
+            uart_print("Invalid command. Use ON, OFF or 0-100\r\n");
+        }
+    }
+}
+
+/* Main function */
+int main(void)
+{
+    char command[10];
+    uint8_t index = 0;
+    char received;
+
+    uart_init();
+    pwm_init();
+
+    uart_print("UART LED Control Ready\r\n");
+    uart_print("Enter ON, OFF or brightness (0-100)\r\n");
+
+    while (1)
+    {
+        received = uart_receive();
+
+        if (received == '\r' || received == '\n')
+        {
+            if (index > 0)
+            {
+                command[index] = '\0';
+
+                process_command(command);
+
+                index = 0;
+            }
+        }
+        else
+        {
+            if (index < sizeof(command) - 1)
+            {
+                command[index++] = received;
+            }
+            else
+            {
+                index = 0;
+                uart_print("Command too long\r\n");
+            }
+        }
+    }
+}
+
+14) Regulate the rotational speed of a DC motor by mapping an analog input signal to a PWM output
+
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <stdint.h>
+
+/* Function declarations */
+void adc_init(void);
+uint16_t read_adc(void);
+
+void pwm_init(void);
+void motor_speed(uint8_t speed);
+
+int main(void)
+{
+    uint16_t adc_value;
+    uint8_t pwm_value;
+
+    /* Initialize ADC and PWM */
+    adc_init();
+    pwm_init();
+
+    while (1)
+    {
+        /* Read 10-bit ADC value */
+        adc_value = read_adc();
+
+        /* Convert 10-bit value to 8-bit PWM value */
+        pwm_value = (uint32_t)adc_value * 255 / 1023;
+
+        /* Set motor speed */
+        motor_speed(pwm_value);
+    }
+
+    return 0;
+}
+
+/* Initialize ADC */
+void adc_init(void)
+{
+    ADMUX = (1 << REFS0); 
+
+    /* AVCC reference, ADC0 channel */
+
+    ADCSRA = (1 << ADEN) |
+             (1 << ADPS2) |
+             (1 << ADPS1) |
+             (1 << ADPS0);
+
+    /* Enable ADC, prescaler = 128 */
+}
+
+/* Read analog value from ADC0 */
+uint16_t read_adc(void)
+{
+    ADCSRA |= (1 << ADSC);
+
+    /* Start ADC conversion */
+
+    while (ADCSRA & (1 << ADSC));
+
+    /* Wait until conversion completes */
+
+    return ADC;
+}
+
+/* Initialize Timer0 in Fast PWM mode */
+void pwm_init(void)
+{
+    DDRD |= (1 << PD6);
+
+    /* Configure PD6 as PWM output */
+
+    TCCR0A = (1 << COM0A1) |
+             (1 << WGM01) |
+             (1 << WGM00);
+
+    /* Fast PWM, non-inverting mode */
+
+    TCCR0B = (1 << CS01) |
+             (1 << CS00);
+
+    /* Prescaler = 64 */
+
+    OCR0A = 0;
+
+    /* Motor initially stopped */
+}
+
+/* Set motor speed using PWM */
+void motor_speed(uint8_t speed)
+{
+    OCR0A = speed;
+}
+
+15) Read temperature data and pressure from a BMP280 sensor and display the real-time value on an OLED screen
+
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <util/delay.h>
+#include <stdint.h>
+#include <stdio.h>
+
+/* I2C addresses: 7-bit */
+#define BMP_ADDR  0x76
+#define OLED_ADDR 0x3C
+
+/* BMP280 calibration data */
+uint16_t dig_T1;
+int16_t dig_T2, dig_T3;
+
+uint16_t dig_P1;
+int16_t dig_P2, dig_P3, dig_P4;
+int16_t dig_P5, dig_P6, dig_P7;
+int16_t dig_P8, dig_P9;
+
+int32_t t_fine;
+
+/* Function declarations */
+void i2c_init(void);
+void i2c_start(uint8_t address);
+void i2c_write(uint8_t data);
+uint8_t i2c_read_ack(void);
+uint8_t i2c_read_nack(void);
+void i2c_stop(void);
+
+void bmp_write(uint8_t reg, uint8_t data);
+uint8_t bmp_read(uint8_t reg);
+void bmp_read_calibration(void);
+void bmp_init(void);
+
+int32_t read_temperature(void);
+uint32_t read_pressure(void);
+
+void oled_command(uint8_t cmd);
+void oled_data(uint8_t data);
+void oled_init(void);
+void oled_clear(void);
+void oled_cursor(uint8_t page, uint8_t column);
+void oled_char(char c);
+void oled_string(char *str);
+
+void delay_2_seconds(void);
+
+/* ---------------- I2C FUNCTIONS ---------------- */
+
+void i2c_init(void)
+{
+    TWSR = 0x00;       // Prescaler = 1
+    TWBR = 72;         // 100 kHz at 16 MHz
+    TWCR = (1 << TWEN);
+}
+
+void i2c_start(uint8_t address)
+{
+    TWCR = (1 << TWINT) |
+           (1 << TWSTA) |
+           (1 << TWEN);
+
+    while (!(TWCR & (1 << TWINT)));
+
+    TWDR = address;
+
+    TWCR = (1 << TWINT) | (1 << TWEN);
+
+    while (!(TWCR & (1 << TWINT)));
+}
+
+void i2c_write(uint8_t data)
+{
+    TWDR = data;
+
+    TWCR = (1 << TWINT) | (1 << TWEN);
+
+    while (!(TWCR & (1 << TWINT)));
+}
+
+uint8_t i2c_read_ack(void)
+{
+    TWCR = (1 << TWINT) |
+           (1 << TWEN) |
+           (1 << TWEA);
+
+    while (!(TWCR & (1 << TWINT)));
+
+    return TWDR;
+}
+
+uint8_t i2c_read_nack(void)
+{
+    TWCR = (1 << TWINT) | (1 << TWEN);
+
+    while (!(TWCR & (1 << TWINT)));
+
+    return TWDR;
+}
+
+void i2c_stop(void)
+{
+    TWCR = (1 << TWINT) |
+           (1 << TWEN) |
+           (1 << TWSTO);
+}
+
+/* ---------------- BMP280 FUNCTIONS ---------------- */
+
+void bmp_write(uint8_t reg, uint8_t data)
+{
+    i2c_start((BMP_ADDR << 1) | 0);
+
+    i2c_write(reg);
+    i2c_write(data);
+
+    i2c_stop();
+}
+
+uint8_t bmp_read(uint8_t reg)
+{
+    uint8_t data;
+
+    i2c_start((BMP_ADDR << 1) | 0);
+    i2c_write(reg);
+
+    i2c_start((BMP_ADDR << 1) | 1);
+
+    data = i2c_read_nack();
+
+    i2c_stop();
+
+    return data;
+}
+
+/* Read BMP280 calibration coefficients */
+void bmp_read_calibration(void)
+{
+    uint8_t c[24];
+
+    i2c_start((BMP_ADDR << 1) | 0);
+    i2c_write(0x88);
+
+    i2c_start((BMP_ADDR << 1) | 1);
+
+    for (uint8_t i = 0; i < 23; i++)
+        c[i] = i2c_read_ack();
+
+    c[23] = i2c_read_nack();
+
+    i2c_stop();
+
+    dig_T1 = (uint16_t)c[1] << 8 | c[0];
+    dig_T2 = (int16_t)((uint16_t)c[3] << 8 | c[2]);
+    dig_T3 = (int16_t)((uint16_t)c[5] << 8 | c[4]);
+
+    dig_P1 = (uint16_t)c[7] << 8 | c[6];
+    dig_P2 = (int16_t)((uint16_t)c[9] << 8 | c[8]);
+    dig_P3 = (int16_t)((uint16_t)c[11] << 8 | c[10]);
+    dig_P4 = (int16_t)((uint16_t)c[13] << 8 | c[12]);
+    dig_P5 = (int16_t)((uint16_t)c[15] << 8 | c[14]);
+    dig_P6 = (int16_t)((uint16_t)c[17] << 8 | c[16]);
+    dig_P7 = (int16_t)((uint16_t)c[19] << 8 | c[18]);
+    dig_P8 = (int16_t)((uint16_t)c[21] << 8 | c[20]);
+    dig_P9 = (int16_t)((uint16_t)c[23] << 8 | c[22]);
+}
+
+void bmp_init(void)
+{
+    bmp_write(0xE0, 0xB6); // Software reset
+
+    _delay_ms(10);
+
+    bmp_read_calibration();
+
+    bmp_write(0xF5, 0xA0); // Standby/filter configuration
+
+    bmp_write(0xF4, 0x27);
+    // Temperature x1, pressure x1, normal mode
+}
+
+/* Read and compensate temperature */
+int32_t read_temperature(void)
+{
+    int32_t adc_T;
+    int32_t var1, var2;
+    int32_t temperature;
+
+    uint8_t msb, lsb, xlsb;
+
+    msb  = bmp_read(0xFA);
+    lsb  = bmp_read(0xFB);
+    xlsb = bmp_read(0xFC);
+
+    adc_T = ((int32_t)msb << 12) |
+            ((int32_t)lsb << 4) |
+            (xlsb >> 4);
+
+    var1 = ((((adc_T >> 3) -
+             ((int32_t)dig_T1 << 1))) *
+             dig_T2) >> 11;
+
+    var2 = (((((adc_T >> 4) - dig_T1) *
+             ((adc_T >> 4) - dig_T1)) >> 12) *
+             dig_T3) >> 14;
+
+    t_fine = var1 + var2;
+
+    temperature = (t_fine * 5 + 128) >> 8;
+
+    return temperature;
+}
+
+/* Read and compensate pressure */
+uint32_t read_pressure(void)
+{
+    int32_t adc_P;
+    int64_t var1, var2, p;
+
+    uint8_t msb, lsb, xlsb;
+
+    msb  = bmp_read(0xF7);
+    lsb  = bmp_read(0xF8);
+    xlsb = bmp_read(0xF9);
+
+    adc_P = ((int32_t)msb << 12) |
+            ((int32_t)lsb << 4) |
+            (xlsb >> 4);
+
+    var1 = (int64_t)t_fine - 128000;
+
+    var2 = var1 * var1 * dig_P6;
+    var2 = var2 + ((var1 * dig_P5) << 17);
+    var2 = var2 + (((int64_t)dig_P4) << 35);
+
+    var1 = ((var1 * var1 * dig_P3) >> 8) +
+           ((var1 * dig_P2) << 12);
+
+    var1 = (((((int64_t)1) << 47) + var1) *
+            dig_P1) >> 33;
+
+    if (var1 == 0)
+        return 0;
+
+    p = 1048576 - adc_P;
+
+    p = (((p << 31) - var2) * 3125) / var1;
+
+    var1 = ((int64_t)dig_P9 * (p >> 13) *
+            (p >> 13)) >> 25;
+
+    var2 = ((int64_t)dig_P8 * p) >> 19;
+
+    p = ((p + var1 + var2) >> 8) +
+        (((int64_t)dig_P7) << 4);
+
+    /* Return pressure in Pa */
+    return (uint32_t)(p >> 8);
+}
+
+/* ---------------- OLED FUNCTIONS ---------------- */
+
+void oled_command(uint8_t cmd)
+{
+    i2c_start((OLED_ADDR << 1) | 0);
+
+    i2c_write(0x00);
+    i2c_write(cmd);
+
+    i2c_stop();
+}
+
+void oled_data(uint8_t data)
+{
+    i2c_start((OLED_ADDR << 1) | 0);
+
+    i2c_write(0x40);
+    i2c_write(data);
+
+    i2c_stop();
+}
+
+void oled_init(void)
+{
+    _delay_ms(100);
+
+    oled_command(0xAE); // Display OFF
+    oled_command(0xD5);
+    oled_command(0x80);
+
+    oled_command(0xA8);
+    oled_command(0x3F); // 64 rows
+
+    oled_command(0xD3);
+    oled_command(0x00);
+
+    oled_command(0x40);
+
+    oled_command(0x8D);
+    oled_command(0x14);
+
+    oled_command(0x20);
+    oled_command(0x02); // Page addressing mode
+
+    oled_command(0xA1);
+    oled_command(0xC8);
+
+    oled_command(0xDA);
+    oled_command(0x12);
+
+    oled_command(0x81);
+    oled_command(0x7F);
+
+    oled_command(0xD9);
+    oled_command(0xF1);
+
+    oled_command(0xDB);
+    oled_command(0x40);
+
+    oled_command(0xA4);
+    oled_command(0xA6);
+
+    oled_command(0xAF); // Display ON
+}
+
+void oled_clear(void)
+{
+    for (uint8_t page = 0; page < 8; page++)
+    {
+        oled_command(0xB0 | page);
+        oled_command(0x00);
+        oled_command(0x10);
+
+        for (uint8_t col = 0; col < 128; col++)
+            oled_data(0x00);
+    }
+}
+
+void oled_cursor(uint8_t page, uint8_t column)
+{
+    oled_command(0xB0 | page);
+    oled_command(0x00 | (column & 0x0F));
+    oled_command(0x10 | (column >> 4));
+}
+
+/* Simple 5x7 character font */
+void oled_char(char c)
+{
+    uint8_t font[5] = {0, 0, 0, 0, 0};
+
+    switch (c)
+    {
+        case '0': { uint8_t a[5]={0x3E,0x51,0x49,0x45,0x3E}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '1': { uint8_t a[5]={0x00,0x42,0x7F,0x40,0x00}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '2': { uint8_t a[5]={0x42,0x61,0x51,0x49,0x46}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '3': { uint8_t a[5]={0x21,0x41,0x45,0x4B,0x31}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '4': { uint8_t a[5]={0x18,0x14,0x12,0x7F,0x10}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '5': { uint8_t a[5]={0x27,0x45,0x45,0x45,0x39}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '6': { uint8_t a[5]={0x3C,0x4A,0x49,0x49,0x30}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '7': { uint8_t a[5]={0x01,0x71,0x09,0x05,0x03}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '8': { uint8_t a[5]={0x36,0x49,0x49,0x49,0x36}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case '9': { uint8_t a[5]={0x06,0x49,0x49,0x29,0x1E}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+
+        case 'T': { uint8_t a[5]={0x01,0x01,0x7F,0x01,0x01}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case 'E': { uint8_t a[5]={0x7F,0x49,0x49,0x49,0x41}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case 'M': { uint8_t a[5]={0x7F,0x02,0x0C,0x02,0x7F}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case 'P': { uint8_t a[5]={0x7F,0x09,0x09,0x09,0x06}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case 'R': { uint8_t a[5]={0x7F,0x09,0x19,0x29,0x46}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case 'S': { uint8_t a[5]={0x46,0x49,0x49,0x49,0x31}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case 'C': { uint8_t a[5]={0x3E,0x41,0x41,0x41,0x22}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+
+        case 'h': { uint8_t a[5]={0x7F,0x08,0x04,0x04,0x78}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case 'p': { uint8_t a[5]={0x7C,0x14,0x14,0x14,0x08}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+        case 'a': { uint8_t a[5]={0x20,0x54,0x54,0x54,0x78}; for(uint8_t i=0;i<5;i++)font[i]=a[i]; break; }
+
+        case ':': font[0]=0x00; font[1]=0x36; font[2]=0x36; break;
+        case '.': font[0]=0x00; font[1]=0x60; font[2]=0x60; break;
+        case '-': font[0]=0x08; font[1]=0x08; font[2]=0x08; break;
+        case ' ': break;
+        default: break;
+    }
+
+    for (uint8_t i = 0; i < 5; i++)
+        oled_data(font[i]);
+
+    oled_data(0x00);
+}
+
+void oled_string(char *str)
+{
+    while (*str)
+        oled_char(*str++);
+}
+
+// Delay function
+void delay_2_seconds(void)
+{
+    for (uint8_t i = 0; i < 20; i++)
+        _delay_ms(100);
+}
+
+//Main function
+int main(void)
+{
+    int32_t temperature;
+    uint32_t pressure;
+
+    char temp_str[20];
+    char pressure_str[20];
+
+    uint32_t temp_abs;
+    uint32_t pressure_hpa;
+
+    i2c_init();
+
+    bmp_init();
+    oled_init();
+
+    oled_clear();
+
+    while (1)
+    {
+        /* Read temperature */
+        temperature = read_temperature();
+
+        /* Read pressure */
+        pressure = read_pressure();
+
+        /* Convert temperature to readable text */
+        if (temperature < 0)
+        {
+            temp_abs = (uint32_t)(-temperature);
+
+            snprintf(temp_str, sizeof(temp_str),
+                     "TEMP: -%lu.%02lu C",
+                     (unsigned long)(temp_abs / 100),
+                     (unsigned long)(temp_abs % 100));
+        }
+        else
+        {
+            temp_abs = (uint32_t)temperature;
+
+            snprintf(temp_str, sizeof(temp_str),
+                     "TEMP: %lu.%02lu C",
+                     (unsigned long)(temp_abs / 100),
+                     (unsigned long)(temp_abs % 100));
+        }
+
+        /* Convert pressure Pa to hPa */
+        pressure_hpa = pressure / 100;
+
+        snprintf(pressure_str, sizeof(pressure_str),
+                 "PRESS: %lu hPa",
+                 (unsigned long)pressure_hpa);
+
+        /* Update OLED */
+        oled_clear();
+
+        oled_cursor(2, 0);
+        oled_string(temp_str);
+
+        oled_cursor(4, 0);
+        oled_string(pressure_str);
+
+        /* Wait 2 seconds */
+        delay_2_seconds();
+    }
+}
+
+
+
